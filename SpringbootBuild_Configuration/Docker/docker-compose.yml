@@ -1,0 +1,176 @@
+version: "3.9"
+services:
+  zipkin:
+    container_name: zipkin
+    image: openzipkin/zipkin
+    extra_hosts: [ 'host.docker.internal:host-gateway' ]
+    ports:
+      - "9411:9411"
+    networks:
+      - proxynet
+  redis:
+    container_name: redis
+    image: redis:latest
+    ports:
+      - 6379:6379
+    volumes:
+      - redis_data:/data
+    environment:
+      - REDIS_PASSWORD=fourbench@Redis
+    command: redis-server --appendonly yes
+    networks:
+      - proxynet
+  mongodb:
+    container_name: mongodb
+    image: mongo:latest
+    restart: always
+    extra_hosts: [ 'host.docker.internal:host-gateway' ]
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=pass
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./docker-entrypoint-initdb.d/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    networks:
+      - proxynet
+  mongo-express:
+    container_name: mongo-express
+    image: mongo-express
+    restart: always
+    extra_hosts: [ 'host.docker.internal:host-gateway' ]
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: admin
+      ME_CONFIG_MONGODB_ADMINPASSWORD: pass
+      ME_CONFIG_MONGODB_SERVER: mongodb
+      #ME_CONFIG_MONGODB_URL: mongodb://admin:password@mongo:27017/
+    links:
+      - mongodb
+    networks:
+      - proxynet
+  rabbitmq:
+    container_name: rabbitmq
+    build:
+      context: ./docker-entrypoint-rabbitmq
+      dockerfile: Dockerfile
+    extra_hosts: ['host.docker.internal:host-gateway' ]
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+      - "61613:61613"
+    volumes:
+      - ~/.docker-conf/rabbitmq/data/:/var/lib/rabbitmq/
+      - ~/.docker-conf/rabbitmq/log/:/var/log/rabbitmq
+    networks:
+      - proxynet
+  discovery-service:
+    container_name: discovery-service
+    build:
+      context: discovery-service
+      dockerfile: Dockerfile
+    image: discovery-service:1.0
+    extra_hosts: ['host.docker.internal:host-gateway' ]
+    ports:
+      - "8761:8761"
+    links:
+      - mongodb
+    networks:
+      - proxynet
+  authentication-service:
+    container_name: authentication-service
+    build:
+      context: authentication-service
+      dockerfile: Dockerfile
+    image: authentication-service:1.0
+    extra_hosts: [ 'host.docker.internal:host-gateway' ]
+    links:
+      - discovery-service
+      - zipkin
+    ports:
+      - "8085:8085"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    networks:
+      - proxynet
+  collaboration-service:
+    container_name: collaboration-service
+    build:
+      context: collaboration-service
+      dockerfile: Dockerfile
+    image: collaboration-service:1.0
+    extra_hosts: [ 'host.docker.internal:host-gateway' ]
+    links:
+      - rabbitmq
+      - discovery-service
+      - authentication-service
+      - zipkin
+    ports:
+      - "8086:8086"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    networks:
+      - proxynet
+  schoolmanagement-service:
+    container_name: schoolmanagement-service
+    build:
+      context: schoolmanagement-service
+      dockerfile: Dockerfile
+    image: schoolmanagement-service:1.0
+    extra_hosts: [ 'host.docker.internal:host-gateway' ]
+    links:
+      - discovery-service
+      - authentication-service
+      - zipkin
+    ports:
+      - "8087:8087"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    networks:
+      - proxynet
+  gateway-service:
+    container_name: gateway-service
+    build:
+      context: gateway-service
+      dockerfile: Dockerfile
+    image: gateway-service:1.0
+    extra_hosts: [ 'host.docker.internal:host-gateway' ]
+    links:
+      - discovery-service
+      - authentication-service
+      - collaboration-service
+      - schoolmanagement-service
+      - redis
+    ports:
+      - "8060:8060"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    networks:
+      - proxynet
+  admin-service:
+    container_name: admin-service
+    build:
+      context: admin-service
+      dockerfile: Dockerfile
+    image: admin-service:1.0
+    extra_hosts: [ 'host.docker.internal:host-gateway' ]
+    links:
+      - discovery-service
+      - authentication-service
+      - collaboration-service
+      - schoolmanagement-service
+      - gateway-service
+    ports:
+      - "8765:8765"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    networks:
+      - proxynet
+
+volumes:
+  redis_data:
+
+networks:
+  proxynet:
+    name: fourbench-services-network
