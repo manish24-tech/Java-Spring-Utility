@@ -1,0 +1,32 @@
+import org.springframework.batch.item.ItemReader;
+import org.springframework.batch.item.excel.RowMapper;
+import org.springframework.batch.item.excel.poi.PoiItemReader;
+import org.springframework.batch.item.excel.support.rowset.RowSet;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
+import org.springframework.stereotype.Component;
+
+@Component
+public class EmployeeExcelItemReader implements ItemReader<RowSet> {
+
+    private final Resource excelResource;
+
+    public EmployeeExcelItemReader(@Value("classpath:/data/employee.xlsx") Resource excelResource) {
+        this.excelResource = excelResource;
+    }
+
+    @Override
+    public RowSet read() throws Exception {
+        PoiItemReader<RowSet> reader = new PoiItemReader<>();
+        reader.setResource(excelResource);
+        reader.setRowMapper(excelRowMapper());
+        reader.open(new ExecutionContext()); // Ensure proper initialization
+        return reader.read();
+    }
+
+    private RowMapper<RowSet> excelRowMapper() {
+        // Define your custom RowMapper for Excel rows to RowSet here
+        // Map Excel columns to RowSet
+        return (row, rowNum) -> row;
+    }
+}
